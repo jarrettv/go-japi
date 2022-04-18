@@ -1,0 +1,20 @@
+GET localhost:8080/
+
+###
+
+GET localhost:8080/api/ping
+Accept: application/json
+
+###
+
+POST localhost:8080/api/greet
+Accept: application/json
+
+{"name": ""}
+###
+
+POST localhost:8080/api/greet
+Accept: application/json
+X-User-Age: 80
+
+{"name": "John"}
