@@ -44,7 +44,7 @@ type GreetRequest struct {
 
 type GreetResponse struct {
   // Remember to add all the tags for the renderers you enable.
-  Greeting string `json:"data" yaml:"data"`
+  Greeting string `json:"data"`
 }
 
 func Greet(ctx context.Context, req GreetRequest) (*GreetResponse, error) {

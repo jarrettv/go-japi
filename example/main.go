@@ -43,11 +43,9 @@ func Greet(ctx context.Context, req *GreetRequest) (*GreetResponse, error) {
 			"name": "required",
 		})
 	}
-
 	res := &GreetResponse{
 		Greeting: fmt.Sprintf("Hello %s, you're %d years old.", req.Name, req.Age),
 	}
-
 	return res, nil
 }
 
