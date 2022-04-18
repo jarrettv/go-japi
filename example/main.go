@@ -10,7 +10,6 @@ import (
 	min "github.com/jarrettv/go-minimal"
 )
 
-// Empty returns 204 - No Content
 func Empty(context.Context, *min.Empty) (interface{}, error) {
 	return nil, nil
 }
