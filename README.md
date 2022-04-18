@@ -43,7 +43,7 @@ type GreetRequest struct {
 }
 
 type GreetResponse struct {
-  // Remember to add all the tags for the renderers you enable.
+  // Remember to add tags for automatic marshalling
   Greeting string `json:"data"`
 }
 
