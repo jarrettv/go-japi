@@ -1,12 +1,13 @@
-package minimal
+package japi
 
 import (
 	"context"
-	"github.com/goccy/go-json"
-	"log"
 	"net/http"
 
-	"github.com/jarrettv/go-minimal/decoder"
+	"github.com/goccy/go-json"
+
+	"github.com/jarrettv/go-japi/decoder"
+	"github.com/jarrettv/go-japi/problem"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -22,9 +23,10 @@ type Headerer interface {
 
 // Problemer allows you to customize the error problem details.
 type Problemer interface {
-	Problem() ProblemDetails
+	Problem() problem.Problem
 }
 
+// Handler allows you to handle request with the route params
 type Handler interface {
 	http.Handler
 	handle(http.ResponseWriter, *http.Request, httprouter.Params)
@@ -60,9 +62,33 @@ func H[T any, O any](handle Handle[T, O]) Handler {
 	return h
 }
 
+// E creates a Handler that returns the error
 func E(err error) Handler {
 	return H(func(context.Context, *Empty) (*Empty, error) {
 		return nil, err
+	})
+}
+
+// LoadRawJson loads raw json to response useful for swagger docs.
+func LoadRawJson(loadRawJson func() ([]byte, error)) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json, e := loadRawJson()
+		if e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+			return
+		}
+		RawJson(json)
+	})
+}
+
+// RawJson sends raw json to response useful for swagger docs.
+func RawJson(data []byte) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, e := w.Write(data)
+		if e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+		}
 	})
 }
 
@@ -84,10 +110,28 @@ func (h *handler[T, O]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 //nolint:gocognit,cyclop
 func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
-	serveProblem := func(status int) {
-		p := ProblemStatus(status)
-		p.enrich(r.Context(), h.config)
-		p.serveJSON(w, r)
+	if h.config.RouteLogFunc != nil {
+		route := p.MatchedRoutePath()
+		vars := make(map[string]string, len(p))
+		for _, param := range p {
+			if param.Value != route {
+				vars[param.Key] = param.Value
+			}
+		}
+		h.config.RouteLogFunc(r.Context(), route, vars) // TODO (jv) get route
+	}
+
+	serveProblem := func(p *problem.Problem) {
+		h.config.Enrich(r.Context(), p)
+		if h.config.ProblemLogFunc != nil {
+			h.config.ProblemLogFunc(r.Context(), p)
+		}
+		p.ServeJSON(w)
+	}
+
+	serveRequestProblem := func(e error) {
+		p := problem.BadRequest(e)
+		serveProblem(p)
 	}
 
 	req := new(T)
@@ -96,7 +140,7 @@ func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprou
 	if h.decodeHeader != nil {
 		e := h.decodeHeader.Decode(r.Header, req)
 		if e != nil {
-			serveProblem(http.StatusBadRequest)
+			serveRequestProblem(e)
 			return
 		}
 	}
@@ -105,7 +149,7 @@ func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprou
 	if h.decodeQuery != nil && r.URL.RawQuery != "" {
 		e := h.decodeQuery.Decode(r.URL.Query(), req)
 		if e != nil {
-			serveProblem(http.StatusBadRequest)
+			serveRequestProblem(e)
 			return
 		}
 	}
@@ -114,7 +158,7 @@ func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprou
 	if h.decodePath != nil && len(p) != 0 {
 		e := h.decodePath.Decode(p, req)
 		if e != nil {
-			serveProblem(http.StatusBadRequest)
+			serveRequestProblem(e)
 			return
 		}
 	}
@@ -123,12 +167,12 @@ func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprou
 	if r.ContentLength > 0 {
 		dec, e := getDecoder(JsonEncoding)
 		if e != nil {
-			serveProblem(http.StatusNotAcceptable)
+			serveRequestProblem(e) // http.ErrNotSupported
 			return
 		}
 
 		if e := dec(r, req); e != nil {
-			serveProblem(http.StatusBadRequest)
+			serveRequestProblem(e)
 			return
 		}
 	}
@@ -139,16 +183,14 @@ func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprou
 	if e != nil {
 		if pb, ok := e.(Problemer); ok {
 			p := pb.Problem()
-			p.enrich(r.Context(), h.config)
-			p.serveJSON(w, r)
-		} else if p, ok := e.(*ProblemDetails); ok {
-			p.enrich(r.Context(), h.config)
-			p.serveJSON(w, r)
+			serveProblem(&p)
+			return
+		} else if p, ok := e.(*problem.Problem); ok {
+			serveProblem(p)
 			return
 		} else {
-			p := ProblemUnexpected(e)
-			p.enrich(r.Context(), h.config)
-			p.serveJSON(w, r)
+			p := problem.Unexpected(e)
+			serveProblem(p)
 			return
 		}
 	}
@@ -165,7 +207,8 @@ func (h *handler[T, O]) handle(w http.ResponseWriter, r *http.Request, p httprou
 	}
 
 	if e = json.NewEncoder(w).Encode(res); e != nil {
-		log.Println(e) // TODO (jv) is this ok?
+		p := problem.Unexpected(e)
+		serveProblem(p)
 	}
 }
 

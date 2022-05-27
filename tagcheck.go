@@ -1,4 +1,4 @@
-package minimal
+package japi
 
 import (
 	"reflect"

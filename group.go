@@ -1,4 +1,4 @@
-package minimal
+package japi
 
 import (
 	"net/http"
@@ -45,6 +45,8 @@ func (g *group) Group(path string) Router {
 func (g *group) Use(mw ...Middleware) {
 	g.r.Use(func(next http.Handler) http.Handler {
 		mwNext := next
+
+		// TODO (jv) do we need to reverse?
 		for _, fn := range mw {
 			mwNext = fn(mwNext)
 		}

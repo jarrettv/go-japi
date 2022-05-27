@@ -1,20 +1,31 @@
-GET localhost:8080/
+GET http://localhost:8080/
 
 ###
 
-GET localhost:8080/api/ping
+GET http://localhost:8080/api/ping
 Accept: application/json
 
 ###
 
-POST localhost:8080/api/greet
+GET http://localhost:8080/not-found
+Accept: application/json
+
+###
+
+POST http://localhost:8080/api/greet
 Accept: application/json
 
 {"name": ""}
+
 ###
 
-POST localhost:8080/api/greet
+POST http://localhost:8080/api/greet
 Accept: application/json
 X-User-Age: 80
 
 {"name": "John"}
+
+###
+
+POST http://localhost:8080/api/hello/John/Doe
+Accept: application/json

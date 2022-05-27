@@ -1,17 +1,16 @@
-# Minimal HTTP API go library
+# japi is a JSON HTTP API go library
 
-Minimal is a fast & simple HTTP API library. It will automatically marshal JSON payloads to/from 
-your request and response structs. It follows [RFC7807](https://datatracker.ietf.org/doc/html/rfc7807) standard for 
-returning useful problem details.
+Japi is a fast & simple HTTP API library that will automatically marshal JSON payloads to/from 
+your request and response structs. It follows [RFC7807](https://datatracker.ietf.org/doc/html/rfc7807) 
+standard for returning useful problem details.
 
-This library focuses on happy path to minimize code. For more complex use cases, we recommend sticking
-to a larger web framework.
+This library focuses on happy path to minimize code and dependencies. For more complex use cases, 
+we recommend sticking to a larger web framework. However, this library supports the standard 
+net/http ecosystem.
 
 This library requires Go 1.18 to work as it utilizes generics.
 
 This library was forked from https://github.com/AbeMedia/go-don
-
-Let's keep this library minimal, please send PRs to delete unnecessary code.
 
 ## Contents
 
@@ -34,7 +33,7 @@ import (
   "fmt"
   "net/http"
 
-  min "github.com/jarrettv/go-minimal"
+  "github.com/jarrettv/go-japi"
 )
 
 type GreetRequest struct {
@@ -49,7 +48,7 @@ type GreetResponse struct {
 
 func Greet(ctx context.Context, req GreetRequest) (*GreetResponse, error) {
   if req.Name == "" {
-    return nil, min.ProblemValid(map[string]string{
+    return nil, japi.ProblemValid(map[string]string{
       "name": "required",
     })
   }
@@ -60,43 +59,47 @@ func Greet(ctx context.Context, req GreetRequest) (*GreetResponse, error) {
   return res, nil
 }
 
-func Pong(context.Context, min.Empty) (string, error) {
+func Pong(context.Context, japi.Empty) (string, error) {
   return "pong", nil
 }
 
 func main() {
-  r := min.New(nil)
-  r.Get("/ping", min.H(Pong)) // Handlers are wrapped with `minimal.H`.
-  r.Post("/greet/:name", min.H(Greet))
+  r := japi.New(nil)
+  r.Get("/ping", japi.H(Pong)) // Handlers are wrapped with `japi.H`.
+  r.Post("/greet/:name", japi.H(Greet))
   r.ListenAndServe(":8080")
 }
 ```
 
 ## Configuration
 
-Minimal is configured by passing in the `Config` struct to `minimal.New`.
+Japi is configured by passing in the `Config` struct to `japi.New`. We recommend you setup problem config at a minimum.
 
 ```go
-r := min.New(&min.Config{
-  ProblemTypeUrlFormat: "https://docs.example.com/errors/%s",
-  ProblemInstanceFunc: func(_ context.Context) string {
-    return fmt.Sprintf("https://errors.example.com/trace/%d", time.Now().UnixMilli())
-}})
+r := japi.New(&japi.Config{
+  ProblemConfig: problem.ProblemConfig{
+    ProblemTypeUrlFormat: "https://example.com/errors/%s",
+    ProblemInstanceFunc: func(ctx context.Context) string {
+      return fmt.Sprintf("https://example.com/trace/%d", time.Now().UnixMilli())
+    },
+  },
+})
 ```
+### RouteLogFunc
 
-### ProblemTypeUrlFormat
+A function to easily log the route name and route variables.
+
+### ProblemLogFunc
+
+A function to easily log when problems occur.
+
+### ProblemConfig.ProblemTypeUrlFormat
 
 The format for the problem details type URI. See [RFC7807](https://datatracker.ietf.org/doc/html/rfc7807)
 
-### ProblemInstanceFunc
+### ProblemConfig.ProblemInstanceFunc
 
 A function for generating a unique trace URI. Defaults to a timestamp. See [RFC7807](https://datatracker.ietf.org/doc/html/rfc7807)
-
-#### Form (input only)
-
-MIME: `application/x-www-form-urlencoded`, `multipart/form-data`
-
-Parses form data requests. Use the `form` tag in your request struct.
 
 ## Request parsing
 
@@ -143,24 +146,24 @@ func (nr *MyResponse) Header() http.Header {
 }
 ```
 
-## Problem Details
+## Problems
 
-Implement the `Problemer` to customize your error problem details. Or use the many built in problems:
+Return a `problem.Problem` error when something goes wrong. For example:
 
 ```go
-return nil, min.ProblemUnexpected(e)
+return nil, problem.Unexpected(err) // 500
 // or
-return nil, min.ProblemNotFound()
+return nil, problem.NotFound() // 404
 // or
-return nil, min.ProblemPermit(username)
+return nil, problem.NotPermitted(username) // 403
 // or
-return nil, min.ProblemValid(map[string]string{
+return nil, problem.Validation(map[string]string{ // 400
   "name": "required",
 })
 // or
-return nil, min.ProblemRule("item is on backorder")
+return nil, problem.RuleViolantion("item is on backorder") // 400
 // or
-return nil, min.ProblemOld()
+return nil, problem.NotCurrent() // 407
 ```
 
 
@@ -169,14 +172,14 @@ return nil, min.ProblemOld()
 You can create sub-routers using the `Group` function:
 
 ```go
-r := min.New(nil)
+r := japi.New(nil)
 sub := r.Group("/api")
 sub.Get("/hello")
 ```
 
 ## Middleware
 
-Minimal uses the standard http middleware format of
+Japi uses the standard http middleware format of
 `func(http.RequestHandler) http.RequestHandler`.
 
 For example:
@@ -193,25 +196,25 @@ func loggingMiddleware(next http.Handler) http.Handler {
 It is registered on a router using `Use` e.g.
 
 ```go
-r := min.New(nil)
-r.Post("/", min.H(handler))
+r := japi.New(nil)
+r.Post("/", japi.H(handler))
 r.Use(loggingMiddleware)
 ```
 
 Middleware registered on a group only applies to routes in that group and child groups.
 
 ```go
-r := min.New(nil)
-r.Get("/login", min.H(loginHandler))
+r := japi.New(nil)
+r.Get("/login", japi.H(loginHandler))
 r.Use(loggingMiddleware) // applied to all routes
 
 api := r.Group("/api")
-api.Get("/hello", min.H(helloHandler))
+api.Get("/hello", japi.H(helloHandler))
 api.Use(authMiddleware) // applied to routes `/api/hello` and `/api/v2/bye`
 
 
 v2 := api.Group("/v2")
-v2.Get("/bye", min.H(byeHandler))
+v2.Get("/bye", japi.H(byeHandler))
 v2.Use(corsMiddleware) // only applied to `/api/v2/bye`
 
 ```

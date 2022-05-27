@@ -7,14 +7,15 @@ import (
 	"strings"
 	"time"
 
-	min "github.com/jarrettv/go-minimal"
+	"github.com/jarrettv/go-japi"
+	"github.com/jarrettv/go-japi/problem"
 )
 
-func Empty(context.Context, *min.Empty) (interface{}, error) {
+func Empty(context.Context, *japi.Empty) (interface{}, error) {
 	return nil, nil
 }
 
-func Ping(context.Context, *min.Empty) (string, error) {
+func Ping(context.Context, *japi.Empty) (string, error) {
 	return "pong", nil
 }
 
@@ -25,6 +26,15 @@ type GreetRequest struct {
 
 type GreetResponse struct {
 	Greeting string `json:"data"`
+}
+
+type HelloRequest struct {
+	First string `path:"first"` // Get name from JSON body
+	Last  string `path:"last"`  // Get name from JSON body
+}
+
+type HelloResponse struct {
+	Hello string `json:"hello"`
 }
 
 func (gr *GreetResponse) StatusCode() int {
@@ -39,7 +49,7 @@ func (gr *GreetResponse) Header() http.Header {
 
 func Greet(ctx context.Context, req *GreetRequest) (*GreetResponse, error) {
 	if strings.TrimSpace(req.Name) == "" {
-		return nil, min.ProblemValid(map[string]string{
+		return nil, problem.Validation(map[string]string{
 			"name": "required",
 		})
 	}
@@ -49,17 +59,27 @@ func Greet(ctx context.Context, req *GreetRequest) (*GreetResponse, error) {
 	return res, nil
 }
 
+func Hello(ctx context.Context, req *HelloRequest) (*HelloResponse, error) {
+	res := &HelloResponse{
+		Hello: fmt.Sprintf("Hello %s %s", req.First, req.Last),
+	}
+	return res, nil
+}
+
 func main() {
-	r := min.New(&min.Config{
-		ProblemTypeUrlFormat: "https://docs.example.com/errors/%s",
-		ProblemInstanceFunc: func(_ context.Context) string {
-			return fmt.Sprintf("https://errors.example.com/trace/%d", time.Now().UnixMilli())
-		}})
-	r.Get("/", min.H(Empty))
+	r := japi.New(&japi.Config{
+		ProblemConfig: problem.ProblemConfig{
+			ProblemTypeUrlFormat: "https://example.com/errors/%s",
+			ProblemInstanceFunc: func(ctx context.Context) string {
+				return fmt.Sprintf("https://example.com/trace/%d", time.Now().UnixMilli())
+			},
+		},
+	})
+	r.Get("/", japi.H(Empty))
 
 	g := r.Group("/api")
-	g.Get("/ping", min.H(Ping))
-	g.Post("/greet", min.H(Greet))
-
+	g.Get("/ping", japi.H(Ping))
+	g.Post("/greet", japi.H(Greet))
+	g.Post("/hello/:first/:last", japi.H(Hello))
 	http.ListenAndServe(":8080", r.Router())
 }
