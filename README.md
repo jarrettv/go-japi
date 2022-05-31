@@ -48,7 +48,7 @@ type GreetResponse struct {
 
 func Greet(ctx context.Context, req GreetRequest) (*GreetResponse, error) {
   if req.Name == "" {
-    return nil, japi.ProblemValid(map[string]string{
+    return nil, problem.Validation(map[string]string{
       "name": "required",
     })
   }
@@ -73,7 +73,7 @@ func main() {
 
 ## Configuration
 
-Japi is configured by passing in the `Config` struct to `japi.New`. We recommend you setup problem config at a minimum.
+Japi is configured by passing in the `Config` struct to `japi.New`. We recommend you setup `ProblemConfig` at a minimum.
 
 ```go
 r := japi.New(&japi.Config{
@@ -114,7 +114,7 @@ type MyRequest struct {
   // Get from the URL query.
   Filter string `query:"filter"`
 
-  // Get from the JSON, YAML, XML or form body.
+  // Get from the JSON or form body.
   Content float64 `form:"bar" json:"bar"`
 
   // Get from the HTTP header.
